@@ -15,15 +15,16 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Configuration - use environment variables
+# Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 app.config['MONGO_URI'] = os.environ.get('MONGO_URI')
 
-# Initialize extensions with error handling
+# Initialize MongoDB with production-ready settings
 try:
-    mongo = PyMongo(app)
+    mongo = PyMongo(app, connect=False, retryWrites=True, socketTimeoutMS=30000, connectTimeoutMS=30000)
+    print("✓ MongoDB initialized (lazy connection)")
 except Exception as e:
-    print(f"Error initializing MongoDB: {str(e)}")
+    print(f"✗ MongoDB initialization error: {str(e)}")
     raise
 
 login_manager = LoginManager(app)
@@ -32,29 +33,31 @@ login_manager.login_message_category = 'info'
 
 def initialize_database():
     try:
-        if mongo.db is not None:
-            # Create collections if they don't exist
-            if 'users' not in mongo.db.list_collection_names():
-                mongo.db.create_collection('users')
-                print("✓ Created 'users' collection")
+        with app.app_context():
+            if mongo.db is not None:
+                # Create collections if they don't exist
+                if 'users' not in mongo.db.list_collection_names():
+                    mongo.db.create_collection('users')
+                    print("✓ Created 'users' collection")
 
-            if 'feedbacks' not in mongo.db.list_collection_names():
-                mongo.db.create_collection('feedbacks')
-                print("✓ Created 'feedbacks' collection")
+                if 'feedbacks' not in mongo.db.list_collection_names():
+                    mongo.db.create_collection('feedbacks')
+                    print("✓ Created 'feedbacks' collection")
 
-            # Create indexes
-            mongo.db.users.create_index([('email', 1)], unique=True)
-            mongo.db.users.create_index([('roll_number', 1)], unique=True)
-            mongo.db.feedbacks.create_index([('user_id', 1)])
-            mongo.db.feedbacks.create_index([('timestamp', -1)])
+                # Create indexes
+                mongo.db.users.create_index([('email', 1)], unique=True)
+                mongo.db.users.create_index([('roll_number', 1)], unique=True)
+                mongo.db.feedbacks.create_index([('user_id', 1)])
+                mongo.db.feedbacks.create_index([('timestamp', -1)])
 
-            print("✓ Database initialized successfully")
+                print("✓ Database initialized successfully")
+            else:
+                print("⚠️ MongoDB connection not established - will attempt lazy connection")
     except Exception as e:
         print(f"⚠️ Database initialization warning: {str(e)}")
 
-# Initialize database within app context
-with app.app_context():
-    initialize_database()
+# Initialize database
+initialize_database()
 
 class User(UserMixin):
     def __init__(self, user_data):
@@ -71,7 +74,7 @@ def load_user(user_id):
         user_data = mongo.db.users.find_one({"_id": ObjectId(user_id)})
         return User(user_data) if user_data else None
     except Exception as e:
-        print(f"Error loading user: {str(e)}")
+        app.logger.error(f"Error loading user: {str(e)}")
         return None
 
 def validate_roll_number(form, field):
@@ -139,6 +142,10 @@ class FeedbackForm(FlaskForm):
     )
     submit = SubmitField("Submit Feedback")
 
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
+
 @app.route('/')
 def home():
     return redirect(url_for('dashboard')) if current_user.is_authenticated else redirect(url_for('login'))
@@ -151,6 +158,10 @@ def register():
     form = RegisterForm()
     if form.validate_on_submit():
         try:
+            # Verify MongoDB connection
+            if not mongo.db:
+                raise Exception("No database connection")
+            
             existing_user = mongo.db.users.find_one({'$or': [
                 {'email': form.email.data},
                 {'roll_number': form.roll_number.data.upper()}
@@ -171,15 +182,16 @@ def register():
             }
 
             result = mongo.db.users.insert_one(user_data)
-            if result.inserted_id:
-                flash('Registration successful! Please login.', 'success')
-                return redirect(url_for('login'))
-            else:
-                raise Exception("User registration failed")
+            if not result.inserted_id:
+                raise Exception("Insert operation failed")
+
+            flash('Registration successful! Please login.', 'success')
+            return redirect(url_for('login'))
 
         except Exception as e:
-            flash('Registration failed. Please try again.', 'danger')
-            print(f"Registration error: {str(e)}")
+            app.logger.error(f"Registration error: {str(e)}")
+            flash('Registration failed. Please try again later.', 'danger')
+            return redirect(url_for('register'))
 
     return render_template('register.html', form=form)
 
@@ -204,7 +216,7 @@ def login():
 
         except Exception as e:
             flash('Login failed. Please try again.', 'danger')
-            print(f"Login error: {str(e)}")
+            app.logger.error(f"Login error: {str(e)}")
 
     return render_template('login.html', form=form)
 
@@ -216,7 +228,7 @@ def dashboard():
         return render_template('dashboard.html', user=current_user, feedbacks=feedbacks)
     except Exception as e:
         flash('Error loading dashboard', 'danger')
-        print(f"Dashboard error: {str(e)}")
+        app.logger.error(f"Dashboard error: {str(e)}")
         return redirect(url_for('home'))
 
 @app.route('/give-feedback', methods=['GET', 'POST'])
@@ -247,7 +259,7 @@ def give_feedback():
 
         except Exception as e:
             flash('Failed to submit feedback. Please try again.', 'danger')
-            print(f"Feedback submission error: {str(e)}")
+            app.logger.error(f"Feedback submission error: {str(e)}")
     elif request.method == 'POST':
         flash('Please correct the errors in the form', 'warning')
 
@@ -261,7 +273,7 @@ def view_feedback():
         return render_template('view_feedback.html', feedbacks=feedbacks)
     except Exception as e:
         flash('Error loading feedback', 'danger')
-        print(f"View feedback error: {str(e)}")
+        app.logger.error(f"View feedback error: {str(e)}")
         return redirect(url_for('dashboard'))
 
 @app.route('/delete-feedback/<feedback_id>', methods=['POST'])
@@ -279,7 +291,7 @@ def delete_feedback(feedback_id):
             flash('Feedback not found or already deleted', 'warning')
     except Exception as e:
         flash('Error deleting feedback', 'danger')
-        print(f"Delete feedback error: {str(e)}")
+        app.logger.error(f"Delete feedback error: {str(e)}")
     
     return redirect(url_for('view_feedback'))
 
