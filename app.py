@@ -17,7 +17,7 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/feedback_system')
+app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb+srv://daarlabhanumurthy:bhanu@student-feedback-db.rvavtq8.mongodb.net/?retryWrites=true&w=majority&appName=student-feedback-db')
 
 # Initialize extensions
 mongo = PyMongo(app)
