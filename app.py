@@ -15,13 +15,17 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Configuration
+# Configuration - use environment variables
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-# Removed the default MONGO_URI here
 app.config['MONGO_URI'] = os.environ.get('MONGO_URI')
 
-# Initialize extensions
-mongo = PyMongo(app)
+# Initialize extensions with error handling
+try:
+    mongo = PyMongo(app)
+except Exception as e:
+    print(f"Error initializing MongoDB: {str(e)}")
+    raise
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
@@ -45,24 +49,12 @@ def initialize_database():
             mongo.db.feedbacks.create_index([('timestamp', -1)])
 
             print("✓ Database initialized successfully")
-        else:
-            print("✗ MongoDB database not initialized. Check MONGO_URI environment variable in Render.")
     except Exception as e:
-        print(f"✗ Database initialization failed: {str(e)}")
-        raise
+        print(f"⚠️ Database initialization warning: {str(e)}")
 
-# Test MongoDB connection
-try:
-    if mongo.db:
-        mongo.db.command('ping')
-        print("✓ MongoDB Connection Status:")
-        print(f"- Database: {mongo.db.name}")
-        print(f"- Collections: {mongo.db.list_collection_names()}")
-    else:
-        print("✗ MongoDB object not initialized. Check MONGO_URI environment variable in Render.")
-except Exception as e:
-    print(f"✗ MongoDB Connection Failed: {str(e)}")
-    raise
+# Initialize database within app context
+with app.app_context():
+    initialize_database()
 
 class User(UserMixin):
     def __init__(self, user_data):
@@ -79,7 +71,7 @@ def load_user(user_id):
         user_data = mongo.db.users.find_one({"_id": ObjectId(user_id)})
         return User(user_data) if user_data else None
     except Exception as e:
-        app.logger.error(f"Error loading user: {str(e)}")
+        print(f"Error loading user: {str(e)}")
         return None
 
 def validate_roll_number(form, field):
@@ -187,7 +179,7 @@ def register():
 
         except Exception as e:
             flash('Registration failed. Please try again.', 'danger')
-            app.logger.error(f"Registration error: {str(e)}")
+            print(f"Registration error: {str(e)}")
 
     return render_template('register.html', form=form)
 
@@ -212,7 +204,7 @@ def login():
 
         except Exception as e:
             flash('Login failed. Please try again.', 'danger')
-            app.logger.error(f"Login error: {str(e)}")
+            print(f"Login error: {str(e)}")
 
     return render_template('login.html', form=form)
 
@@ -224,7 +216,7 @@ def dashboard():
         return render_template('dashboard.html', user=current_user, feedbacks=feedbacks)
     except Exception as e:
         flash('Error loading dashboard', 'danger')
-        app.logger.error(f"Dashboard error: {str(e)}")
+        print(f"Dashboard error: {str(e)}")
         return redirect(url_for('home'))
 
 @app.route('/give-feedback', methods=['GET', 'POST'])
@@ -255,43 +247,40 @@ def give_feedback():
 
         except Exception as e:
             flash('Failed to submit feedback. Please try again.', 'danger')
-            app.logger.error(f"Feedback submission error: {str(e)}")
+            print(f"Feedback submission error: {str(e)}")
     elif request.method == 'POST':
         flash('Please correct the errors in the form', 'warning')
 
     return render_template('give_feedback.html', form=form)
+
 @app.route('/view-feedback')
 @login_required
 def view_feedback():
     try:
         feedbacks = list(mongo.db.feedbacks.find({'user_id': current_user.id}).sort('timestamp', -1))
-        # Import the base FlaskForm to pass an empty form for csrf_token
-        from flask_wtf import FlaskForm
-        form = FlaskForm()
-        return render_template('view_feedback.html', feedbacks=feedbacks, form=form)
+        return render_template('view_feedback.html', feedbacks=feedbacks)
     except Exception as e:
         flash('Error loading feedback', 'danger')
-        app.logger.error(f"View feedback error: {str(e)}")
+        print(f"View feedback error: {str(e)}")
         return redirect(url_for('dashboard'))
 
 @app.route('/delete-feedback/<feedback_id>', methods=['POST'])
 @login_required
 def delete_feedback(feedback_id):
     try:
-        # Ensure the feedback belongs to the current user before deleting
-        feedback = mongo.db.feedbacks.find_one({'_id': ObjectId(feedback_id), 'user_id': current_user.id})
-        if feedback:
-            result = mongo.db.feedbacks.delete_one({'_id': ObjectId(feedback_id)})
-            if result.deleted_count == 1:
-                flash('Feedback deleted successfully', 'success')
-            else:
-                flash('Error deleting feedback', 'danger') # More specific message
+        result = mongo.db.feedbacks.delete_one({
+            '_id': ObjectId(feedback_id),
+            'user_id': current_user.id
+        })
+        
+        if result.deleted_count == 1:
+            flash('Feedback deleted successfully', 'success')
         else:
-            flash('Feedback not found or does not belong to you', 'warning')
+            flash('Feedback not found or already deleted', 'warning')
     except Exception as e:
         flash('Error deleting feedback', 'danger')
-        app.logger.error(f"Delete feedback error: {str(e)}")
-
+        print(f"Delete feedback error: {str(e)}")
+    
     return redirect(url_for('view_feedback'))
 
 @app.route('/logout')
@@ -301,6 +290,8 @@ def logout():
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('login'))
 
+def create_app():
+    return app
+
 if __name__ == '__main__':
-    initialize_database()
     app.run(debug=True)
