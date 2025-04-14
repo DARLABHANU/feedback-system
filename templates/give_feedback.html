@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Give Feedback{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-4">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h2 class="card-title mb-4">Submit Feedback</h2>
+                <form method="POST" action="{{ url_for('give_feedback') }}" class="needs-validation" novalidate>
+                    {{ form.hidden_tag() }}
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            {{ form.faculty_name.label(class="form-label") }}
+                            {{ form.faculty_name(class="form-select", **{'required': 'required'}) }}
+                            {% if form.faculty_name.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.faculty_name.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.subject.label(class="form-label") }}
+                            {{ form.subject(class="form-select", **{'required': 'required'}) }}
+                            {% if form.subject.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.subject.errors %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.rating.label(class="form-label") }}
+                        <div class="d-flex align-items-center">
+                            {{ form.rating(class="form-select w-auto", **{'required': 'required'}) }}
+                            <div class="ms-3 rating-stars" id="ratingPreview">
+                                ★★★★★
+                            </div>
+                        </div>
+                        {% if form.rating.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.rating.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.comments.label(class="form-label") }}
+                        {{ form.comments(class="form-control", rows="5", placeholder="Your detailed feedback...", **{'required': 'required'}) }}
+                        {% if form.comments.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.comments.errors %}
+                                    {{ error }}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">Your feedback helps us improve</div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane me-2"></i>Submit Feedback
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Debugging - log form submission
+    const form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            console.log("Form submitted with data:", {
+                faculty: form.faculty_name.value,
+                subject: form.subject.value,
+                rating: form.rating.value,
+                comments: form.comments.value
+            });
+        });
+    }
+
+    // Rating preview
+    const ratingSelect = document.querySelector('#rating');
+    const ratingPreview = document.querySelector('#ratingPreview');
+    
+    if (ratingSelect && ratingPreview) {
+        // Initialize with current value
+        updateRatingPreview();
+        
+        ratingSelect.addEventListener('change', updateRatingPreview);
+        
+        function updateRatingPreview() {
+            const rating = parseInt(ratingSelect.value) || 0;
+            ratingPreview.innerHTML = '★'.repeat(rating) + '☆'.repeat(5 - rating);
+        }
+    }
+});
+</script>
+{% endblock %}
+{% endblock %}

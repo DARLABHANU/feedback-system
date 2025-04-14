@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>Welcome, {{ current_user.name }}!</h2>
+            <p class="text-muted">Roll Number: {{ current_user.roll_number }} | Department: {{ current_user.department|upper }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('give_feedback') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Give New Feedback
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Recent Feedback</h5>
+                    {% if feedbacks %}
+                        <div class="list-group">
+                            {% for feedback in feedbacks[:3] %}
+                            <div class="list-group-item">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">{{ feedback.subject }}</h6>
+                                    <small class="text-muted">{{ feedback.timestamp.strftime('%d %b %Y') }}</small>
+                                </div>
+                                <p class="mb-1">{{ feedback.comments[:50] }}...</p>
+                                <small>Rating: 
+                                    <span class="rating-stars">
+                                        {% for i in range(feedback.rating) %}★{% endfor %}
+                                        {% for i in range(5 - feedback.rating) %}☆{% endfor %}
+                                    </span>
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            You haven't submitted any feedback yet.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">Quick Actions</h5>
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('give_feedback') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-edit me-2"></i>Submit Feedback
+                        </a>
+                        <a href="{{ url_for('view_feedback') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-list me-2"></i>View All Feedback
+                        </a>
+                        <a href="#" class="btn btn-outline-info">
+                            <i class="fas fa-user-edit me-2"></i>Update Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

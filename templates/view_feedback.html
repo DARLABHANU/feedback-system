@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}My Feedback{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>My Feedback Submissions</h2>
+        <a href="{{ url_for('give_feedback') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>New Feedback
+        </a>
+    </div>
+
+    {% if feedbacks %}
+    <div class="row">
+        {% for feedback in feedbacks %}
+        <div class="col-md-6 mb-4">
+            <div class="card feedback-card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <h5 class="card-title">{{ feedback.subject }}</h5>
+                        <span class="badge bg-primary">{{ feedback.faculty_name }}</span>
+                    </div>
+                    <h6 class="card-subtitle mb-2 text-muted">
+                        Submitted on {{ feedback.timestamp.strftime('%d %b %Y at %H:%M') }}
+                    </h6>
+                    <div class="mb-2">
+                        <span class="rating-stars">
+                            {% for i in range(feedback.rating) %}★{% endfor %}
+                            {% for i in range(5 - feedback.rating) %}☆{% endfor %}
+                        </span>
+                        <span class="ms-2">({{ feedback.rating }}/5)</span>
+                    </div>
+                    <p class="card-text">{{ feedback.comments }}</p>
+                </div>
+                <div class="card-footer bg-transparent">
+                    <form action="{{ url_for('delete_feedback', feedback_id=feedback._id) }}" method="POST">
+                        {{ form.hidden_tag() }}  <button type="submit" class="btn btn-sm btn-outline-danger"
+                                onclick="return confirm('Are you sure you want to delete this feedback?');">
+                            <i class="fas fa-trash me-1"></i>Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        You haven't submitted any feedback yet.
+        <a href="{{ url_for('give_feedback') }}" class="alert-link">Submit your first feedback</a>.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Additional confirmation for delete action
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteForms = document.querySelectorAll('form[action*="/delete-feedback/"]');
+    deleteForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!confirm('Are you sure you want to delete this feedback?')) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
