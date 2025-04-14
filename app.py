@@ -17,7 +17,8 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb+srv://daarlabhanumurthy:bhanu@student-feedback-db.rvavtq8.mongodb.net/?retryWrites=true&w=majority&appName=student-feedback-db')
+# Removed the default MONGO_URI here
+app.config['MONGO_URI'] = os.environ.get('MONGO_URI')
 
 # Initialize extensions
 mongo = PyMongo(app)
@@ -27,32 +28,38 @@ login_manager.login_message_category = 'info'
 
 def initialize_database():
     try:
-        # Create collections if they don't exist
-        if 'users' not in mongo.db.list_collection_names():
-            mongo.db.create_collection('users')
-            print("✓ Created 'users' collection")
+        if mongo.db is not None:
+            # Create collections if they don't exist
+            if 'users' not in mongo.db.list_collection_names():
+                mongo.db.create_collection('users')
+                print("✓ Created 'users' collection")
 
-        if 'feedbacks' not in mongo.db.list_collection_names():
-            mongo.db.create_collection('feedbacks')
-            print("✓ Created 'feedbacks' collection")
+            if 'feedbacks' not in mongo.db.list_collection_names():
+                mongo.db.create_collection('feedbacks')
+                print("✓ Created 'feedbacks' collection")
 
-        # Create indexes
-        mongo.db.users.create_index([('email', 1)], unique=True)
-        mongo.db.users.create_index([('roll_number', 1)], unique=True)
-        mongo.db.feedbacks.create_index([('user_id', 1)])
-        mongo.db.feedbacks.create_index([('timestamp', -1)])
+            # Create indexes
+            mongo.db.users.create_index([('email', 1)], unique=True)
+            mongo.db.users.create_index([('roll_number', 1)], unique=True)
+            mongo.db.feedbacks.create_index([('user_id', 1)])
+            mongo.db.feedbacks.create_index([('timestamp', -1)])
 
-        print("✓ Database initialized successfully")
+            print("✓ Database initialized successfully")
+        else:
+            print("✗ MongoDB database not initialized. Check MONGO_URI environment variable in Render.")
     except Exception as e:
         print(f"✗ Database initialization failed: {str(e)}")
         raise
 
 # Test MongoDB connection
 try:
-    mongo.db.command('ping')
-    print("✓ MongoDB Connection Status:")
-    print(f"- Database: {mongo.db.name}")
-    print(f"- Collections: {mongo.db.list_collection_names()}")
+    if mongo.db:
+        mongo.db.command('ping')
+        print("✓ MongoDB Connection Status:")
+        print(f"- Database: {mongo.db.name}")
+        print(f"- Collections: {mongo.db.list_collection_names()}")
+    else:
+        print("✗ MongoDB object not initialized. Check MONGO_URI environment variable in Render.")
 except Exception as e:
     print(f"✗ MongoDB Connection Failed: {str(e)}")
     raise
