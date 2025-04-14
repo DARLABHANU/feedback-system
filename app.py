@@ -9,6 +9,7 @@ from wtforms.validators import InputRequired, Length, EqualTo, ValidationError, 
 from werkzeug.security import generate_password_hash, check_password_hash
 from bson.objectid import ObjectId
 from dotenv import load_dotenv
+import pymongo
 
 # Load environment variables
 load_dotenv()
@@ -19,10 +20,28 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 app.config['MONGO_URI'] = os.environ.get('MONGO_URI')
 
-# Initialize MongoDB with production-ready settings
+# Validate MongoDB URI
+if not app.config['MONGO_URI']:
+    raise ValueError("MongoDB connection URI is not configured. Please set MONGO_URI in your environment variables.")
+
+# Initialize MongoDB with robust settings
+mongo = PyMongo(app, 
+               connectTimeoutMS=5000,
+               socketTimeoutMS=30000,
+               serverSelectionTimeoutMS=5000,
+               retryWrites=True,
+               maxPoolSize=50)
+
+# Test MongoDB connection immediately
 try:
-    mongo = PyMongo(app, connect=False, retryWrites=True, socketTimeoutMS=30000, connectTimeoutMS=30000)
-    print("✓ MongoDB initialized (lazy connection)")
+    mongo.db.command('ping')
+    print("✓ MongoDB connection established successfully")
+except pymongo.errors.ServerSelectionTimeoutError as e:
+    print(f"✗ MongoDB server connection timeout: {str(e)}")
+    raise
+except pymongo.errors.ConnectionFailure as e:
+    print(f"✗ MongoDB connection failed: {str(e)}")
+    raise
 except Exception as e:
     print(f"✗ MongoDB initialization error: {str(e)}")
     raise
@@ -32,29 +51,33 @@ login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 
 def initialize_database():
+    """Initialize database collections and indexes."""
     try:
-        with app.app_context():
-            if mongo.db is not None:
-                # Create collections if they don't exist
-                if 'users' not in mongo.db.list_collection_names():
-                    mongo.db.create_collection('users')
-                    print("✓ Created 'users' collection")
+        # Force connection by accessing database
+        db = mongo.db
+        
+        # Create collections if they don't exist
+        collections = db.list_collection_names()
+        
+        required_collections = ['users', 'feedbacks']
+        for collection in required_collections:
+            if collection not in collections:
+                db.create_collection(collection)
+                print(f"✓ Created '{collection}' collection")
 
-                if 'feedbacks' not in mongo.db.list_collection_names():
-                    mongo.db.create_collection('feedbacks')
-                    print("✓ Created 'feedbacks' collection")
+        # Create indexes
+        db.users.create_index([('email', 1)], unique=True)
+        db.users.create_index([('roll_number', 1)], unique=True)
+        db.feedbacks.create_index([('user_id', 1)])
+        db.feedbacks.create_index([('timestamp', -1)])
 
-                # Create indexes
-                mongo.db.users.create_index([('email', 1)], unique=True)
-                mongo.db.users.create_index([('roll_number', 1)], unique=True)
-                mongo.db.feedbacks.create_index([('user_id', 1)])
-                mongo.db.feedbacks.create_index([('timestamp', -1)])
-
-                print("✓ Database initialized successfully")
-            else:
-                print("⚠️ MongoDB connection not established - will attempt lazy connection")
+        print("✓ Database initialized successfully")
+    except pymongo.errors.OperationFailure as e:
+        print(f"✗ Database operation failed: {str(e)}")
+        raise
     except Exception as e:
-        print(f"⚠️ Database initialization warning: {str(e)}")
+        print(f"✗ Database initialization error: {str(e)}")
+        raise
 
 # Initialize database
 initialize_database()
@@ -146,6 +169,16 @@ class FeedbackForm(FlaskForm):
 def internal_error(error):
     return render_template('500.html'), 500
 
+@app.before_request
+def check_db_connection():
+    """Verify MongoDB connection before each request."""
+    try:
+        mongo.db.command('ping')
+    except Exception as e:
+        flash('Database connection error. Please try again later.', 'danger')
+        app.logger.error(f"Database connection failed: {str(e)}")
+        return redirect(url_for('home'))
+
 @app.route('/')
 def home():
     return redirect(url_for('dashboard')) if current_user.is_authenticated else redirect(url_for('login'))
@@ -158,10 +191,6 @@ def register():
     form = RegisterForm()
     if form.validate_on_submit():
         try:
-            # Verify MongoDB connection
-            if not mongo.db:
-                raise Exception("No database connection")
-            
             existing_user = mongo.db.users.find_one({'$or': [
                 {'email': form.email.data},
                 {'roll_number': form.roll_number.data.upper()}
@@ -188,6 +217,9 @@ def register():
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('login'))
 
+        except pymongo.errors.DuplicateKeyError:
+            flash('Email or Roll Number already exists!', 'danger')
+            return redirect(url_for('register'))
         except Exception as e:
             app.logger.error(f"Registration error: {str(e)}")
             flash('Registration failed. Please try again later.', 'danger')
@@ -302,8 +334,5 @@ def logout():
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('login'))
 
-def create_app():
-    return app
-
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
